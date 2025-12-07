@@ -248,18 +248,19 @@ where $k$ is number of sets selected. As $k \to \infty$, this approaches $(1 - 1
 
 \subsection{Methodology}
 
-We implemented both algorithms in Python using:
+We implemented both algorithms in C++17 using:
 \begin{itemize}
-    \item NetworkX 3.0 for max-flow computation
-    \item NumPy 1.24 for numerical operations
-    \item Matplotlib 3.7 for visualization
+    \item Custom Edmonds-Karp implementation for max-flow (BFS-based Ford-Fulkerson)
+    \item Standard Template Library (STL) for data structures
+    \item \texttt{std::chrono::high\_resolution\_clock} for precise timing
+    \item Matplotlib (Python) for visualization of C++ generated data
 \end{itemize}
 
 \textbf{Problem 1 Instances:} Random MPA networks with $n$ spawning sites, $n$ settlement sites, edge probability 0.3, random capacities [50, 200], and costs [5, 20].
 
 \textbf{Problem 2 Instances:} Random restoration problems with $n$ sites, $2n$ species, each site covering 25-50\% of species, costs [10, 50].
 
-\textbf{Trials:} 5 independent runs per configuration, measuring wall-clock time using Python's \texttt{time.perf\_counter()}.
+\textbf{Trials:} 5 independent runs per configuration, measuring wall-clock time using C++ \texttt{high\_resolution\_clock}. Compiled with g++ using -O2 optimization.
 
 \subsection{Results}
 
@@ -360,76 +361,129 @@ MIT Press.
 All source code is available in the project repository. Key files:
 
 \begin{itemize}
-    \item \texttt{src/problem1\_mpa\_network\_flow.py}: Problem 1 implementation
-    \item \texttt{src/problem2\_habitat\_restoration.py}: Problem 2 implementation
-    \item \texttt{experiments/runtime\_analysis.py}: Experimental validation
+    \item \texttt{src/problem1\_mpa\_network\_flow.cpp}: Problem 1 C++ implementation
+    \item \texttt{src/problem2\_habitat\_restoration.cpp}: Problem 2 C++ implementation
+    \item \texttt{experiments/runtime\_analysis.cpp}: Experimental validation
+    \item \texttt{Makefile}: Build system for compiling C++ code
 \end{itemize}
 
 \subsection{Problem 1 Core Algorithm}
 
-\begin{lstlisting}[language=Python, caption=Max Flow Computation]
-def solve_max_flow(self, protected_spawning,
-                   protected_settlement):
-    """Solve maximum flow for given configuration."""
-    G = self.build_flow_network(
-        protected_spawning,
-        protected_settlement
-    )
+\begin{lstlisting}[language=C++, caption=Edmonds-Karp Max Flow]
+// BFS to find augmenting path
+bool MPANetworkFlow::bfs(vector<int>& parent,
+                         vector<int>& parent_edge) {
+    parent.assign(num_nodes, -1);
+    parent_edge.assign(num_nodes, -1);
+    parent[source_idx] = source_idx;
 
-    flow_value, flow_dict = nx.maximum_flow(
-        G, self.source, self.sink
-    )
-    return flow_value, flow_dict
+    queue<int> q;
+    q.push(source_idx);
 
-def greedy_site_selection(self, budget):
-    """Greedy algorithm to select sites."""
-    # Sort by cost-effectiveness
-    sites = sorted(
-        all_sites,
-        key=lambda x: x['value'] / x['cost'],
-        reverse=True
-    )
+    while (!q.empty()) {
+        int u = q.front();
+        q.pop();
 
-    # Greedily add sites within budget
-    for site in sites:
-        if current_cost + site['cost'] <= budget:
-            add_site(site)
-            current_cost += site['cost']
+        for (int i = 0; i < adjacency_list[u].size(); i++) {
+            Edge& e = adjacency_list[u][i];
+            if (parent[e.to] == -1 && e.capacity > e.flow) {
+                parent[e.to] = u;
+                parent_edge[e.to] = i;
+                if (e.to == sink_idx) return true;
+                q.push(e.to);
+            }
+        }
+    }
+    return false;
+}
 
-    return compute_flow()
+// Compute maximum flow
+double MPANetworkFlow::computeMaxFlow() {
+    double max_flow = 0.0;
+    vector<int> parent, parent_edge;
+
+    while (bfs(parent, parent_edge)) {
+        // Find minimum capacity on path
+        double path_flow = INF;
+        for (int v = sink_idx; v != source_idx;
+             v = parent[v]) {
+            int u = parent[v];
+            int edge_idx = parent_edge[v];
+            path_flow = min(path_flow,
+                adjacency_list[u][edge_idx].capacity -
+                adjacency_list[u][edge_idx].flow);
+        }
+
+        // Update flows
+        for (int v = sink_idx; v != source_idx;
+             v = parent[v]) {
+            int u = parent[v];
+            int edge_idx = parent_edge[v];
+            adjacency_list[u][edge_idx].flow += path_flow;
+            int rev_idx = adjacency_list[u][edge_idx].reverseEdge;
+            adjacency_list[v][rev_idx].flow -= path_flow;
+        }
+
+        max_flow += path_flow;
+    }
+
+    return max_flow;
+}
 \end{lstlisting}
 
 \subsection{Problem 2 Core Algorithm}
 
-\begin{lstlisting}[language=Python, caption=Greedy Maximum Coverage]
-def greedy_coverage(self, budget):
-    """Greedy budgeted maximum coverage."""
-    selected = set()
-    covered_species = set()
-    remaining_budget = budget
+\begin{lstlisting}[language=C++, caption=Greedy Maximum Coverage]
+tuple<set<int>, int, double>
+HabitatRestorationProblem::greedyCoverage(double budget) {
+    set<int> selected;
+    set<string> covered_species;
+    double remaining_budget = budget;
 
-    while True:
-        best_site = -1
-        best_ratio = 0.0
+    while (true) {
+        int best_site = -1;
+        double best_ratio = 0.0;
+        set<string> best_new_species;
 
-        # Find site with best marginal coverage/cost
-        for idx, site in enumerate(sites):
-            if site['cost'] <= remaining_budget:
-                new_species = site['species'] - covered_species
-                ratio = len(new_species) / site['cost']
+        // Find site with best marginal coverage per cost
+        for (int idx = 0; idx < sites.size(); idx++) {
+            if (selected.count(idx) == 0 &&
+                sites[idx].cost <= remaining_budget) {
 
-                if ratio > best_ratio:
-                    best_ratio = ratio
-                    best_site = idx
+                // Calculate new species this site adds
+                set<string> new_species;
+                set_difference(
+                    sites[idx].species.begin(),
+                    sites[idx].species.end(),
+                    covered_species.begin(),
+                    covered_species.end(),
+                    inserter(new_species,
+                            new_species.begin()));
 
-        if best_site == -1:
-            break
+                int marginal = new_species.size();
+                if (marginal > 0) {
+                    double ratio = marginal / sites[idx].cost;
+                    if (ratio > best_ratio) {
+                        best_ratio = ratio;
+                        best_site = idx;
+                        best_new_species = new_species;
+                    }
+                }
+            }
+        }
 
-        selected.add(best_site)
-        covered_species.update(sites[best_site]['species'])
-        remaining_budget -= sites[best_site]['cost']
+        if (best_site == -1) break;
 
-    return selected, len(covered_species)
+        // Add best site
+        selected.insert(best_site);
+        covered_species.insert(best_new_species.begin(),
+                              best_new_species.end());
+        remaining_budget -= sites[best_site].cost;
+    }
+
+    return {selected, (int)covered_species.size(),
+            calculateCost(selected)};
+}
 \end{lstlisting}
 
 \section{LLM Usage Documentation}
@@ -438,7 +492,7 @@ def greedy_coverage(self, budget):
 
 \textbf{Large Language Model:} Claude 3.5 Sonnet (Anthropic)
 
-\textbf{Purpose:} LaTeX formatting assistance, Python debugging, algorithm verification
+\textbf{Purpose:} LaTeX formatting assistance, C++ implementation guidance, algorithm verification
 
 \subsection{Prompts and Results}
 
@@ -446,17 +500,17 @@ def greedy_coverage(self, budget):
 
 \textbf{Result:} Provided LaTeX template for mathematical proof formatting, which was adapted for Theorem 1 proof structure.
 
-\textbf{Prompt 2:} "Debug NetworkX maximum flow implementation - getting zero flow for valid network"
+\textbf{Prompt 2:} "Implement Edmonds-Karp maximum flow algorithm in C++ with adjacency list representation"
 
-\textbf{Result:} Identified missing node issue in graph construction. Solution: Added validation to ensure source and sink nodes exist before calling \texttt{nx.maximum\_flow()}.
+\textbf{Result:} Provided BFS-based Ford-Fulkerson template with residual graph handling. Modified to use edge structures with reverse edge indices for efficient flow updates.
 
 \textbf{Prompt 3:} "Verify NP-Completeness reduction from Budgeted Maximum Coverage to habitat restoration problem"
 
 \textbf{Result:} Confirmed reduction correctness and suggested citation to Khuller et al. (1999) for theoretical foundation.
 
-\textbf{Prompt 4:} "Generate Python code for experimental runtime analysis with matplotlib visualization"
+\textbf{Prompt 4:} "Generate C++ code for experimental runtime analysis using std::chrono high\_resolution\_clock"
 
-\textbf{Result:} Provided template for timing experiments and plotting, which was extended with statistical analysis (mean, std, confidence intervals).
+\textbf{Result:} Provided template for timing experiments with C++ chrono library, which was extended with statistical analysis and data file generation for plotting.
 
 \subsection{Verification}
 
