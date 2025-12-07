@@ -108,20 +108,43 @@ Marine Protected Areas (MPAs) are ocean regions where human activity is restrict
 \textbf{Theorem 1:} \textit{Maximum flow in $G$ equals maximum sustainable larval flow for configuration $(S', H')$.}
 
 \begin{proof}
-(\textbf{Correctness}) We show flow conservation represents larval transport:
+We prove the reduction is correct by showing there exists a bijection between feasible larval distributions and feasible flows, and that optimal solutions correspond.
 
-\textbf{Flow = Larvae:} Flow units represent individual larvae. Conservation of flow at intermediate nodes models larvae neither created nor destroyed in transit.
+\textbf{(⇒ Larval Distribution to Flow):} Let $L = \{l_{ij}\}$ be a feasible larval distribution where $l_{ij}$ represents larvae transported from spawning site $s_i \in S'$ to settlement site $h_j \in H'$. We construct a flow $f$ in $G$ as follows:
 
-\textbf{Capacity constraints:}
+For each edge $(u,v)$ in $G$:
 \begin{itemize}
-    \item Source edges: Limit spawning output to biological capacity
-    \item Current edges: Limit larval transport to ocean current rates
-    \item Sink edges: Limit settlement to habitat carrying capacity
+    \item $f(\text{source}, s_i) = \sum_{h_j \in H'} l_{ij}$ for each $s_i \in S'$
+    \item $f(s_i, h_j) = l_{ij}$ for each current edge
+    \item $f(h_j, \text{sink}) = \sum_{s_i \in S'} l_{ij}$ for each $h_j \in H'$
 \end{itemize}
 
-\textbf{Maximum flow:} Ford-Fulkerson max-flow theorem guarantees maximum sustainable population subject to all biological and physical constraints.
+This flow is feasible because:
+\begin{enumerate}
+    \item \textbf{Capacity constraints:}
+        \begin{itemize}
+            \item $f(\text{source}, s_i) = \sum_j l_{ij} \leq \text{spawn}(s_i)$ (spawning capacity)
+            \item $f(s_i, h_j) = l_{ij} \leq c_{ij}$ (current transport capacity)
+            \item $f(h_j, \text{sink}) = \sum_i l_{ij} \leq \text{carry}(h_j)$ (settlement capacity)
+        \end{itemize}
+    \item \textbf{Flow conservation:} At each spawning site $s_i$:
+        \[f(\text{source}, s_i) = \sum_j f(s_i, h_j) = \sum_j l_{ij}\]
+        At each settlement site $h_j$:
+        \[\sum_i f(s_i, h_j) = \sum_i l_{ij} = f(h_j, \text{sink})\]
+\end{enumerate}
 
-\textbf{Feasibility:} Any feasible larval distribution corresponds to a feasible flow, and vice versa, establishing bijection between solutions.
+The total flow value is $|f| = \sum_{s_i \in S'} \sum_{h_j \in H'} l_{ij}$, which equals total larvae successfully transported.
+
+\textbf{(⇐ Flow to Larval Distribution):} Conversely, given a feasible flow $f$ in $G$, we construct larval distribution $L$ by setting $l_{ij} = f(s_i, h_j)$ for each current edge. This distribution is feasible because:
+\begin{itemize}
+    \item Spawning constraints: $\sum_j l_{ij} = f(\text{source}, s_i) \leq \text{spawn}(s_i)$
+    \item Transport constraints: $l_{ij} = f(s_i, h_j) \leq c_{ij}$
+    \item Settlement constraints: $\sum_i l_{ij} = f(h_j, \text{sink}) \leq \text{carry}(h_j)$
+\end{itemize}
+
+\textbf{Optimality preservation:} The bijection preserves objective values: maximum flow $= \sum_{ij} l_{ij} =$ maximum larval transport. By the max-flow min-cut theorem, the maximum flow can be computed in polynomial time using Ford-Fulkerson or Edmonds-Karp algorithms.
+
+Therefore, solving max-flow in $G$ yields the optimal larval distribution for configuration $(S', H')$.
 \end{proof}
 
 \subsection{Complete Algorithm}
@@ -192,24 +215,61 @@ Given limited budget, select sites to maximize number of species protected.
 \textbf{Theorem 2:} \textit{Habitat Restoration is NP-Complete.}
 
 \begin{proof}
-We reduce from the Budgeted Maximum Coverage problem, known to be NP-Complete \cite{khuller1999budgeted}.
+We prove NP-Completeness by showing (1) the problem is in NP, and (2) reducing from Budgeted Maximum Coverage, which is known to be NP-Complete \cite{khuller1999budgeted}.
 
-\textbf{(In NP)} Given candidate solution $R'$:
+\textbf{(In NP):} To verify a solution, given a candidate set of restoration sites $R' \subseteq R$ and a target coverage value $k$:
+
+\begin{enumerate}
+    \item \textbf{Verify budget constraint:} Compute $\sum_{r_i \in R'} c_i$ and check if $\leq B$. This takes $O(|R'|) \leq O(n)$ time.
+    \item \textbf{Count species covered:} Compute $C = \bigcup_{r_i \in R'} S_i$ by iterating through all selected sites and taking the union of their species sets. This takes $O(|R'| \cdot |U|) \leq O(n \cdot k)$ time.
+    \item \textbf{Verify coverage:} Check if $|C| \geq k$. This takes $O(1)$ time.
+\end{enumerate}
+
+Total verification time: $O(n + nk) = O(nk)$, which is polynomial in input size. Therefore, Habitat Restoration $\in$ NP.
+
+\textbf{(NP-Hard):} We reduce from Budgeted Maximum Coverage to Habitat Restoration in polynomial time.
+
+\textit{Budgeted Maximum Coverage:} Given a universe $U = \{e_1, \ldots, e_k\}$, a collection of sets $\mathcal{S} = \{T_1, \ldots, T_n\}$ where $T_i \subseteq U$, costs $\{w_1, \ldots, w_n\}$, budget $B$, and target $k$, decide if there exists $\mathcal{S}' \subseteq \mathcal{S}$ such that $\sum_{T_i \in \mathcal{S}'} w_i \leq B$ and $|\bigcup_{T_i \in \mathcal{S}'} T_i| \geq k$.
+
+\textit{Reduction construction:} Given an instance of Budgeted Maximum Coverage, construct an instance of Habitat Restoration as follows:
 \begin{itemize}
-    \item Verify budget: $\sum_{r_i \in R'} c_i \leq B$ in $O(|R'|)$ time
-    \item Count coverage: $|\bigcup_{r_i \in R'} S_i|$ in $O(|R'| \cdot |U|)$ time
-    \item Total: $O(n \cdot k)$ polynomial verification
+    \item Create restoration site $r_i$ for each set $T_i \in \mathcal{S}$
+    \item Set species coverage: $S_i = T_i$ (direct copy)
+    \item Set restoration costs: $c_i = w_i$ (direct copy)
+    \item Set budget: $B$ (same as original)
+    \item Set target coverage: $k$ (same as original)
 \end{itemize}
 
-\textbf{(NP-Hard)} Direct mapping establishes equivalence:
+This construction takes $O(n + k + \sum_i |T_i|)$ time, which is polynomial.
+
+\textbf{(⇒ Coverage Solution to Restoration Solution):} Suppose Budgeted Maximum Coverage has a solution $\mathcal{S}' \subseteq \mathcal{S}$ with $\sum_{T_i \in \mathcal{S}'} w_i \leq B$ and $|\bigcup_{T_i \in \mathcal{S}'} T_i| \geq k$.
+
+Construct $R' = \{r_i : T_i \in \mathcal{S}'\}$ for Habitat Restoration. Then:
 \begin{itemize}
-    \item Restoration sites $\leftrightarrow$ Sets in maximum coverage
-    \item Species $\leftrightarrow$ Elements in universe
-    \item Coverage objective $\leftrightarrow$ Element coverage
-    \item Budget constraint $\leftrightarrow$ Cardinality/cost constraint
+    \item Budget: $\sum_{r_i \in R'} c_i = \sum_{T_i \in \mathcal{S}'} w_i \leq B$ ✓
+    \item Coverage: $|\bigcup_{r_i \in R'} S_i| = |\bigcup_{T_i \in \mathcal{S}'} T_i| \geq k$ ✓
 \end{itemize}
 
-Since Budgeted Maximum Coverage is NP-Complete, Habitat Restoration is NP-Complete.
+Therefore, $R'$ is a valid solution to Habitat Restoration.
+
+\textbf{(⇐ Restoration Solution to Coverage Solution):} Conversely, suppose Habitat Restoration has a solution $R' \subseteq R$ with $\sum_{r_i \in R'} c_i \leq B$ and $|\bigcup_{r_i \in R'} S_i| \geq k$.
+
+Construct $\mathcal{S}' = \{T_i : r_i \in R'\}$ for Budgeted Maximum Coverage. Then:
+\begin{itemize}
+    \item Budget: $\sum_{T_i \in \mathcal{S}'} w_i = \sum_{r_i \in R'} c_i \leq B$ ✓
+    \item Coverage: $|\bigcup_{T_i \in \mathcal{S}'} T_i| = |\bigcup_{r_i \in R'} S_i| \geq k$ ✓
+\end{itemize}
+
+Therefore, $\mathcal{S}'$ is a valid solution to Budgeted Maximum Coverage.
+
+\textbf{Conclusion:} We have shown:
+\begin{enumerate}
+    \item Habitat Restoration $\in$ NP (polynomial verification)
+    \item Polynomial-time reduction from NP-Complete problem (Budgeted Maximum Coverage)
+    \item Solutions are preserved in both directions (equivalence)
+\end{enumerate}
+
+Therefore, Habitat Restoration is NP-Complete.
 \end{proof}
 
 \subsection{Greedy Approximation Algorithm}
